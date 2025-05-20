@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Advanced Admission Form</title>
+    <link rel="stylesheet" href="/static/style.css" />
+    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
+  </head>
+  <body>
+    <div class="container">
+      <h2>Admission Registration</h2>
+      <form id="admissionForm" onsubmit="return false;" class="horizontal-form">
+        <div class="form-row">
+          <div class="form-group">
+            <label for="name">Full Name:</label>
+            <input
+              type="text"
+              name="name"
+              id="name"
+              placeholder="Enter Full Name"
+              pattern="[A-Za-z\s]+"
+              title="Please enter valid name (letters only)"
+              required
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="email">Email:</label>
+            <input
+              type="email"
+              name="email"
+              id="email"
+              placeholder="Enter Email"
+              required
+            />
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="phone">Phone Number:</label>
+            <input
+              type="tel"
+              name="phone"
+              id="phone"
+              placeholder="Enter Phone Number (10 digits)"
+              pattern="[0-9]{10}"
+              title="Please enter 10 digit phone number"
+              required
+            />
+          </div>
+
+          <div class="form-group">
+            <label for="course">Course:</label>
+            <select
+              name="course"
+              id="course"
+              aria-label="Select Course"
+              required
+            >
+              <option value="">Select Course</option>
+              <option value="engineering">Engineering</option>
+              <option value="medical">Medical</option>
+              <option value="arts">Arts</option>
+              <option value="commerce">Commerce</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="dob">Date of Birth:</label>
+            <input
+              type="date"
+              name="dob"
+              id="dob"
+              title="Please enter your date of birth"
+              required
+            />
+          </div>
+          <div class="form-group">
+            <button
+              type="button"
+              onclick="validateAndPay()"
+              class="submit-btn"
+              id="payButton"
+            >
+              Pay & Register (₹50)
+            </button>
+          </div>
+        </div>
+      </form>
+      <div id="response" class="response-message"></div>
+      <div id="loader" class="loader">Processing...</div>
+    </div>
+
+    <script>
+      // Update button text when form fields change
+      document.addEventListener("DOMContentLoaded", function () {
+        const formInputs = document.querySelectorAll("input, select");
+        const payButton = document.getElementById("payButton");
+
+        // Add event listeners to all form inputs
+        formInputs.forEach((input) => {
+          input.addEventListener("change", function () {
+            checkFormCompletion();
+          });
+          input.addEventListener("input", function () {
+            checkFormCompletion();
+          });
+        });
+
+        function checkFormCompletion() {
+          const form = document.getElementById("admissionForm");
+          const isFormValid = form.checkValidity();
+          const requiredFields = document.querySelectorAll("[required]");
+          const allFieldsFilled = Array.from(requiredFields).every(
+            (field) => field.value.trim() !== ""
+          );
+
+          if (isFormValid && allFieldsFilled) {
+            payButton.innerHTML = `Pay ₹50 & Register <span class="amount-ready">✓</span>`;
+            payButton.classList.add("ready");
+          } else {
+            payButton.innerHTML = `Complete Form to Pay ₹50`;
+            payButton.classList.remove("ready");
+          }
+        }
+
+        // Initial check
+        checkFormCompletion();
+      });
+      function validateAndPay() {
+        const form = document.getElementById("admissionForm");
+        const loader = document.getElementById("loader");
+
+        // Basic form validation
+        if (!form.checkValidity()) {
+          form.reportValidity();
+          return;
+        }
+
+        // Show loader
+        loader.style.display = "block";
+
+        const formData = new FormData(form);
+
+        // Age verification
+        const dob = new Date(form.dob.value);
+        const age = Math.floor(
+          (new Date() - dob) / (365.25 * 24 * 60 * 60 * 1000)
+        );
+
+        if (age < 15) {
+          alert("Minimum age requirement is 15 years");
+          loader.style.display = "none";
+          return;
+        }
+
+        fetch("/create_order", {
+          method: "POST",
+          body: formData,
+        })
+          .then((res) => {
+            if (!res.ok) throw new Error("Network response was not ok");
+            return res.json();
+          })
+          .then((data) => {
+            const options = {
+              key: data.key,
+              amount: data.amount,
+              currency: "INR",
+              order_id: data.order_id,
+              prefill: {
+                name: form.name.value,
+                email: form.email.value,
+                contact: form.phone.value,
+              },
+              handler: function (response) {
+                verifyPayment(response, form);
+              },
+              modal: {
+                ondismiss: function () {
+                  loader.style.display = "none";
+                },
+              },
+            };
+
+            const rzp = new Razorpay(options);
+            rzp.open();
+          })
+          .catch((error) => {
+            loader.style.display = "none";
+            document.getElementById(
+              "response"
+            ).innerHTML = `<div class="error">❌ Error: ${error.message}</div>`;
+          });
+      }
+
+      function verifyPayment(response, form) {
+        const loader = document.getElementById("loader");
+
+        fetch("/verify_payment", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...response,
+            name: form.name.value,
+            email: form.email.value,
+            phone: form.phone.value,
+            course: form.course.value,
+            dob: form.dob.value,
+          }),
+        })
+          .then((res) => {
+            if (!res.ok) throw new Error("Payment verification failed");
+            return res.json();
+          })
+          .then((result) => {
+            loader.style.display = "none";
+            document.getElementById("response").innerHTML =
+              '<div class="success">✅ Registration Successful!</div>';
+            form.reset();
+          })
+          .catch((error) => {
+            loader.style.display = "none";
+            document.getElementById(
+              "response"
+            ).innerHTML = `<div class="error">❌ Error: ${error.message}</div>`;
+          });
+      }
+    </script>
+  </body>
+</html>
