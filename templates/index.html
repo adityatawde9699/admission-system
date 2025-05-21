@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>Advanced Admission Form</title>
     <link rel="stylesheet" href="/static/style.css" />
-    <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
   </head>
   <body>
     <div class="container">
@@ -131,9 +130,11 @@
         // Initial check
         checkFormCompletion();
       });
+
       function validateAndPay() {
         const form = document.getElementById("admissionForm");
         const loader = document.getElementById("loader");
+        const responseDiv = document.getElementById("response");
 
         // Basic form validation
         if (!form.checkValidity()) {
@@ -143,8 +144,7 @@
 
         // Show loader
         loader.style.display = "block";
-
-        const formData = new FormData(form);
+        responseDiv.innerHTML = "";
 
         // Age verification
         const dob = new Date(form.dob.value);
@@ -153,83 +153,77 @@
         );
 
         if (age < 15) {
-          alert("Minimum age requirement is 15 years");
           loader.style.display = "none";
+          responseDiv.innerHTML = '<div class="error">❌ Minimum age requirement is 15 years</div>';
           return;
         }
 
-        fetch("/create_order", {
+        // Prepare form data
+        const formData = {
+          name: form.name.value,
+          email: form.email.value,
+          phone: form.phone.value,
+          course: form.course.value,
+          dob: form.dob.value
+        };
+
+        // Create payment link
+        fetch("/create_payment", {
           method: "POST",
-          body: formData,
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+          },
+          body: new URLSearchParams(formData)
         })
           .then((res) => {
             if (!res.ok) throw new Error("Network response was not ok");
             return res.json();
           })
           .then((data) => {
-            const options = {
-              key: data.key,
-              amount: data.amount,
-              currency: "INR",
-              order_id: data.order_id,
-              prefill: {
-                name: form.name.value,
-                email: form.email.value,
-                contact: form.phone.value,
-              },
-              handler: function (response) {
-                verifyPayment(response, form);
-              },
-              modal: {
-                ondismiss: function () {
-                  loader.style.display = "none";
-                },
-              },
-            };
-
-            const rzp = new Razorpay(options);
-            rzp.open();
+            if (data.status === "success" && data.payment_link) {
+              // Redirect to Razorpay.me payment page
+              window.location.href = data.payment_link;
+            } else {
+              throw new Error(data.error || "Failed to create payment link");
+            }
           })
           .catch((error) => {
             loader.style.display = "none";
-            document.getElementById(
-              "response"
-            ).innerHTML = `<div class="error">❌ Error: ${error.message}</div>`;
+            responseDiv.innerHTML = `<div class="error">❌ Error: ${error.message}</div>`;
           });
       }
 
-      function verifyPayment(response, form) {
-        const loader = document.getElementById("loader");
-
-        fetch("/verify_payment", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            ...response,
-            name: form.name.value,
-            email: form.email.value,
-            phone: form.phone.value,
-            course: form.course.value,
-            dob: form.dob.value,
-          }),
-        })
-          .then((res) => {
-            if (!res.ok) throw new Error("Payment verification failed");
-            return res.json();
-          })
-          .then((result) => {
-            loader.style.display = "none";
-            document.getElementById("response").innerHTML =
-              '<div class="success">✅ Registration Successful!</div>';
-            form.reset();
-          })
-          .catch((error) => {
-            loader.style.display = "none";
-            document.getElementById(
-              "response"
-            ).innerHTML = `<div class="error">❌ Error: ${error.message}</div>`;
-          });
+      // Function to check payment status (can be called after redirect back)
+      function checkPaymentStatus() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const paymentId = urlParams.get('payment_id');
+        
+        if (paymentId) {
+          const loader = document.getElementById("loader");
+          const responseDiv = document.getElementById("response");
+          
+          loader.style.display = "block";
+          
+          fetch(`/check_payment?payment_id=${paymentId}`)
+            .then(res => res.json())
+            .then(data => {
+              loader.style.display = "none";
+              if (data.status === "success") {
+                responseDiv.innerHTML = '<div class="success">✅ Registration Successful!</div>';
+                document.getElementById("admissionForm").reset();
+              } else {
+                responseDiv.innerHTML = `<div class="error">❌ Payment failed: ${data.message || "Unknown error"}</div>`;
+              }
+            })
+            .catch(error => {
+              loader.style.display = "none";
+              responseDiv.innerHTML = `<div class="error">❌ Error checking payment status: ${error.message}</div>`;
+            });
+        }
       }
+
+      // Check for payment status when page loads (if returning from payment)
+      document.addEventListener("DOMContentLoaded", checkPaymentStatus);
     </script>
   </body>
 </html>
