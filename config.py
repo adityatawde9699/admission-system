@@ -1,13 +1,16 @@
 # Configuration settings for the application
+from dotenv import load_dotenv
+load_dotenv()
+import os
 
 # Razorpay Configuration
-RAZORPAY_KEY = "your_razorpay_key"  # Replace with your actual Razorpay key
-RAZORPAY_SECRET = "your_razorpay_secret"  # Replace with your actual Razorpay secret
+RAZORPAY_KEY = os.getenv("RAZORPAY_KEY_ID")  # Replace with your actual Razorpay key
+RAZORPAY_SECRET = os.getenv("RAZORPAY_KEY_SECRET")  # Replace with your actual Razorpay secret
 
 # Telegram Configuration
-TELEGRAM_TOKEN = "your_bot_token"  # Replace with your Telegram bot token
-TELEGRAM_CHAT_ID = "your_group_id"  # Replace with your Telegram group ID
+TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")  # Replace with your actual Telegram bot token
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")  # Replace with your actual Telegram chat ID
 
 # Application Configuration
-DEBUG = True  # Set to False in production
-REGISTRATION_FEE = 50  # Fee in INR
+DEBUG = os.getenv('DEBUG')  # Set to False in production
+REGISTRATION_FEE = 1
